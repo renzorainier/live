@@ -6,9 +6,6 @@ import {
   queueRemoteFollow,
   queueRemotePop,
   toggleAudio,
-  enableAudio,
-  disableAudio,
-  setAudioState,
   subscribeToAdminCommands
 } from '../../lib/firebase';
 
@@ -19,17 +16,15 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState('');
 
-  // Listen for state changes
   useEffect(() => {
     const unsubscribe = subscribeToAdminCommands(
-      () => {}, // We don't need command callbacks here
+      () => {},
       (state) => {
         if (state.audioEnabled !== null) {
           setAudioEnabled(state.audioEnabled);
         }
       }
     );
-
     return () => unsubscribe?.();
   }, []);
 
@@ -38,151 +33,209 @@ export default function AdminPanel() {
     setTimeout(() => setFeedback(''), 2000);
   };
 
-  const handleReset = async () => {
+  const handleAction = async (action, successMsg, errorMsg) => {
     setLoading(true);
     try {
-      await resetTotem();
-      showFeedback('✓ Totem reset!');
+      await action();
+      showFeedback(successMsg);
     } catch (err) {
-      showFeedback('✗ Failed to reset');
+      showFeedback(errorMsg);
     }
     setLoading(false);
   };
 
-  const handleQueueFollows = async () => {
-    setLoading(true);
-    try {
-      await queueRemoteFollow(followCount);
-      showFeedback(`✓ Queued ${followCount} follow(s)!`);
-    } catch (err) {
-      showFeedback('✗ Failed to queue follows');
-    }
-    setLoading(false);
-  };
-
-  const handleQueuePops = async () => {
-    setLoading(true);
-    try {
-      await queueRemotePop(popCount);
-      showFeedback(`✓ Queued ${popCount} pop(s)!`);
-    } catch (err) {
-      showFeedback('✗ Failed to queue pops');
-    }
-    setLoading(false);
-  };
-
-  const handleToggleAudio = async () => {
-    setLoading(true);
-    try {
-      await toggleAudio();
-      showFeedback(`✓ Audio ${audioEnabled ? 'disabled' : 'enabled'}!`);
-    } catch (err) {
-      showFeedback('✗ Failed to toggle audio');
-    }
-    setLoading(false);
+  const adjustCount = (value, setter, min = 1, max = 100) => {
+    setter(Math.max(min, Math.min(max, value)));
   };
 
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-slate-900 to-slate-800 p-8">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="mb-12">
-          <h1 className="text-4xl font-bold text-white mb-2">Totem Control Panel</h1>
-          <p className="text-gray-400">Control the totem overlay from any device</p>
+    <div className="min-h-screen w-full bg-gradient-to-b from-black via-slate-900 to-black p-4 sm:p-8">
+      <style>{`
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
+        .animate-slide-in { animation: slideIn 0.3s ease-out; }
+        .animate-pulse-subtle { animation: pulse 2s infinite; }
+      `}</style>
+
+      <div className="max-w-md mx-auto">
+        {/* Logo */}
+        <div className="text-center mb-8 animate-slide-in">
+          <div className="inline-block mb-4">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
+              <span className="text-2xl">🎬</span>
+            </div>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-black text-white mb-1">Totem Control</h1>
+          <p className="text-gray-400 text-sm">Live remote access</p>
         </div>
 
-        {/* Feedback Message */}
+        {/* Status Bar */}
+        <div className="mb-8 p-4 rounded-xl bg-slate-800/50 border border-slate-700 animate-slide-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-3 h-3 rounded-full ${audioEnabled ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
+              <span className="text-white font-semibold">Audio</span>
+            </div>
+            <span className={`text-sm font-bold ${audioEnabled ? 'text-green-400' : 'text-red-400'}`}>
+              {audioEnabled ? 'ON' : 'OFF'}
+            </span>
+          </div>
+        </div>
+
+        {/* Feedback Toast */}
         {feedback && (
-          <div className="mb-6 p-4 bg-blue-500/20 border border-blue-400 rounded-lg text-blue-100 font-semibold text-center">
+          <div className="mb-6 p-4 rounded-xl bg-blue-500/20 border border-blue-400 text-blue-100 text-center font-semibold text-sm animate-slide-in">
             {feedback}
           </div>
         )}
 
-        {/* Control Grid */}
-        <div className="space-y-6">
-          {/* Reset Section */}
-          <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 hover:border-red-500/50 transition-colors">
-            <h2 className="text-xl font-bold text-white mb-4">Emergency Reset</h2>
+        {/* Main Actions */}
+        <div className="space-y-4 mb-8">
+          {/* Follow Section */}
+          <div className="bg-gradient-to-br from-pink-600 to-pink-700 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow animate-slide-in" style={{animationDelay: '0.1s'}}>
+            <div className="text-white mb-4">
+              <div className="text-sm font-semibold opacity-90 mb-1">👥 Queue Follows</div>
+              <div className="text-3xl font-black">{followCount}</div>
+            </div>
+
+            {/* Counter Controls */}
+            <div className="flex gap-2 mb-4">
+              {[1, 5, 10].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setFollowCount(n)}
+                  className={`flex-1 py-2 rounded-lg font-bold transition-all ${
+                    followCount === n
+                      ? 'bg-white text-pink-600 scale-105'
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+
+            {/* +/- Buttons */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => adjustCount(followCount - 1, setFollowCount)}
+                className="flex-1 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg font-bold"
+              >
+                −
+              </button>
+              <button
+                onClick={() => adjustCount(followCount + 1, setFollowCount)}
+                className="flex-1 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg font-bold"
+              >
+                +
+              </button>
+            </div>
+
             <button
-              onClick={handleReset}
+              onClick={() => handleAction(
+                () => queueRemoteFollow(followCount),
+                `✓ Queued ${followCount} follow${followCount !== 1 ? 's' : ''}!`,
+                '✗ Failed'
+              )}
               disabled={loading}
-              className="w-full py-3 px-6 bg-red-600 hover:bg-red-700 disabled:bg-slate-600 text-white font-bold rounded-lg transition-colors"
+              className="w-full py-3 bg-white text-pink-600 font-black rounded-xl hover:bg-pink-50 disabled:opacity-50 transition-all"
             >
-              {loading ? 'Resetting...' : 'RESET TOTEM'}
+              {loading ? '⏳ Sending...' : '📤 Send'}
             </button>
           </div>
 
-          {/* Queue Follows Section */}
-          <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 hover:border-pink-500/50 transition-colors">
-            <h2 className="text-xl font-bold text-white mb-4">Queue Follows</h2>
-            <div className="flex gap-4 items-center">
-              <input
-                type="number"
-                min="1"
-                max="100"
-                value={followCount}
-                onChange={(e) => setFollowCount(Math.max(1, parseInt(e.target.value) || 1))}
-                className="flex-1 px-4 py-2 bg-slate-700 text-white rounded-lg border border-slate-600 focus:outline-none focus:border-pink-500"
-              />
+          {/* Pop Section */}
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow animate-slide-in" style={{animationDelay: '0.2s'}}>
+            <div className="text-white mb-4">
+              <div className="text-sm font-semibold opacity-90 mb-1">💥 Queue POPs</div>
+              <div className="text-3xl font-black">{popCount}</div>
+            </div>
+
+            {/* Counter Controls */}
+            <div className="flex gap-2 mb-4">
+              {[1, 5, 10].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setPopCount(n)}
+                  className={`flex-1 py-2 rounded-lg font-bold transition-all ${
+                    popCount === n
+                      ? 'bg-white text-green-600 scale-105'
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+
+            {/* +/- Buttons */}
+            <div className="flex gap-2 mb-4">
               <button
-                onClick={handleQueueFollows}
-                disabled={loading}
-                className="flex-1 py-2 px-6 bg-pink-600 hover:bg-pink-700 disabled:bg-slate-600 text-white font-bold rounded-lg transition-colors"
+                onClick={() => adjustCount(popCount - 1, setPopCount)}
+                className="flex-1 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg font-bold"
               >
-                {loading ? 'Queueing...' : 'Queue'}
+                −
+              </button>
+              <button
+                onClick={() => adjustCount(popCount + 1, setPopCount)}
+                className="flex-1 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg font-bold"
+              >
+                +
               </button>
             </div>
+
+            <button
+              onClick={() => handleAction(
+                () => queueRemotePop(popCount),
+                `✓ Queued ${popCount} pop${popCount !== 1 ? 's' : ''}!`,
+                '✗ Failed'
+              )}
+              disabled={loading}
+              className="w-full py-3 bg-white text-green-600 font-black rounded-xl hover:bg-green-50 disabled:opacity-50 transition-all"
+            >
+              {loading ? '⏳ Sending...' : '📤 Send'}
+            </button>
           </div>
 
-          {/* Queue Pops Section */}
-          <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 hover:border-green-500/50 transition-colors">
-            <h2 className="text-xl font-bold text-white mb-4">Queue POPs</h2>
-            <div className="flex gap-4 items-center">
-              <input
-                type="number"
-                min="1"
-                max="100"
-                value={popCount}
-                onChange={(e) => setPopCount(Math.max(1, parseInt(e.target.value) || 1))}
-                className="flex-1 px-4 py-2 bg-slate-700 text-white rounded-lg border border-slate-600 focus:outline-none focus:border-green-500"
-              />
-              <button
-                onClick={handleQueuePops}
-                disabled={loading}
-                className="flex-1 py-2 px-6 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 text-white font-bold rounded-lg transition-colors"
-              >
-                {loading ? 'Queueing...' : 'Queue'}
-              </button>
+          {/* Audio Toggle */}
+          <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-shadow animate-slide-in" style={{animationDelay: '0.3s'}}>
+            <div className="text-white mb-4">
+              <div className="text-sm font-semibold opacity-90 mb-1">🔊 Audio</div>
+              <div className="text-2xl font-black">{audioEnabled ? 'Enabled' : 'Disabled'}</div>
             </div>
+
+            <button
+              onClick={() => handleAction(
+                () => toggleAudio(),
+                `✓ Audio ${audioEnabled ? 'disabled' : 'enabled'}!`,
+                '✗ Failed'
+              )}
+              disabled={loading}
+              className="w-full py-3 bg-white text-yellow-600 font-black rounded-xl hover:bg-yellow-50 disabled:opacity-50 transition-all"
+            >
+              {loading ? '⏳ Toggling...' : '⚡ Toggle'}
+            </button>
           </div>
 
-          {/* Audio Section */}
-          <div className="bg-slate-800 rounded-lg p-6 border border-slate-700 hover:border-yellow-500/50 transition-colors">
-            <h2 className="text-xl font-bold text-white mb-4">Audio Control</h2>
-            <div className="flex items-center justify-between">
-              <span className="text-white font-semibold">
-                Audio: <span className={audioEnabled ? 'text-green-400' : 'text-red-400'}>
-                  {audioEnabled ? 'ON' : 'OFF'}
-                </span>
-              </span>
-              <button
-                onClick={handleToggleAudio}
-                disabled={loading}
-                className="py-2 px-8 bg-yellow-600 hover:bg-yellow-700 disabled:bg-slate-600 text-white font-bold rounded-lg transition-colors"
-              >
-                {loading ? 'Toggling...' : 'TOGGLE'}
-              </button>
-            </div>
-          </div>
+          {/* Reset Button */}
+          <button
+            onClick={() => handleAction(
+              () => resetTotem(),
+              '✓ Totem reset!',
+              '✗ Failed'
+            )}
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-red-500 to-red-600 text-white font-black py-4 rounded-2xl hover:shadow-xl disabled:opacity-50 transition-all animate-slide-in shadow-lg"
+            style={{animationDelay: '0.4s'}}
+          >
+            {loading ? '⏳ Resetting...' : '🔴 EMERGENCY RESET'}
+          </button>
         </div>
 
         {/* Footer */}
-        <div className="mt-12 pt-6 border-t border-slate-700 text-center">
-          <p className="text-gray-500 text-sm">
-            Commands are sent live via Firebase Realtime Database.
-            <br />
-            Open the main totem display on your primary device and use these controls from another device.
-          </p>
+        <div className="text-center text-xs text-gray-500">
+          <p>Sync: Firebase Firestore</p>
+          <p className="mt-1">Keep this open on another device</p>
         </div>
       </div>
     </div>
