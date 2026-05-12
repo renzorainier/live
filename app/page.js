@@ -76,7 +76,9 @@ export default function TotemTracker() {
 
   // --- WEBSOCKET CONNECTION ---
   useEffect(() => {
-    const socket = io('https://backend-nmvu.onrender.com');
+    const socket = io('https://backend-nmvu.onrender.com', {
+      transports:['websocket'],
+    });
 
     socket.on('connect', () => console.log('Connected to TikTok Backend!'));
 
