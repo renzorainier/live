@@ -1,452 +1,398 @@
 "use client";
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Rocket,
-  Flame,
-  Users,
-  Zap,
-  RotateCcw,
-  CheckCircle2,
-} from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import Image from 'next/image';
+import { io } from 'socket.io-client';
+
+// 1. IMPORT AUDIO HOOK
+import { useAudio } from './useAudio';
+import { subscribeToAdminCommands } from '../lib/firebase';
+
+// Static imports
+import totemImg from './totem.png';
+import popGif from './pop.gif';
 
 export default function TotemTracker() {
+  // 2. INITIALIZE AUDIO
+  const {
+    isAudioEnabled,
+    setIsAudioEnabled,
+    playFollowSound,
+    playPopSound,
+    playExplosionSound
+  } = useAudio();
+
   const [followCount, setFollowCount] = useState(0);
   const [popCount, setPopCount] = useState(0);
-  const [lastAction, setLastAction] = useState(null);
+  const [avatars, setAvatars] = useState([]);
+  const [isPopping, setIsPopping] = useState(false);
+  const [flash, setFlash] = useState(false);
 
-  const mockUsers = ["Darwin", "Ken", "Ralph", "Eunice", "RandomViewer_99"];
+  // --- DUAL-QUEUE ARCHITECTURE ---
+  const [followQueue, setFollowQueue] = useState([]);
+  const [popQueue, setPopQueue] = useState([]);
 
-  const isPhase1 = followCount < 5;
-  const isPhase2 = followCount >= 5 && popCount < 5;
-  const isReady = popCount >= 5;
+  const lastAdminCommandId = useRef(null);
+  const particlesRef = useRef(null);
+  const MAX = 5;
 
-  const simulateFollow = () => {
-    if (followCount < 5) {
-      setFollowCount((prev) => prev + 1);
+  const isPhase1 = followCount < MAX;
+  const isPhase2 = followCount >= MAX && popCount < MAX;
+  const isReady = popCount >= MAX;
 
-      setLastAction({
-        name: mockUsers[followCount],
-        type: "FOLLOW",
-      });
+  const triggerFlash = useCallback(() => {
+    setFlash(true);
+    setTimeout(() => setFlash(false), 150);
+  }, []);
 
-      setTimeout(() => setLastAction(null), 2500);
+  const spawnParticles = useCallback((color, n, speedMult = 1) => {
+    if (!particlesRef.current) return;
+    const host = particlesRef.current;
+    const rect = host.getBoundingClientRect();
+    const cx = rect.width * 0.3;
+    const cy = rect.height * 0.45;
+
+    for (let i = 0; i < n; i++) {
+      const p = document.createElement('div');
+      const sz = 8 + Math.random() * 12;
+      const angle = Math.random() * 360;
+      const dist = 60 + Math.random() * (180 * speedMult);
+      const x = cx + Math.cos((angle * Math.PI) / 180) * dist;
+      const y = cy + Math.sin((angle * Math.PI) / 180) * dist;
+
+      p.style.cssText = `
+        position: absolute; width: ${sz}px; height: ${sz}px;
+        background: ${color}; left: ${x}px; top: ${y}px;
+        border-radius: 50%; pointer-events: none;
+        box-shadow: 0 0 15px ${color};
+        animation: floatP ${0.5 + Math.random() * 0.4}s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+      `;
+      host.appendChild(p);
+      setTimeout(() => p.remove(), 1000);
     }
-  };
+  }, []);
 
-  const simulatePop = () => {
-    if (isPhase2 && popCount < 5) {
-      setPopCount((prev) => prev + 1);
+  // --- WEBSOCKET CONNECTION ---
+  useEffect(() => {
+    const socket = io('http://localhost:4000');
 
-      setLastAction({
-        name: mockUsers[popCount],
-        type: "POP",
-      });
+    socket.on('connect', () => console.log('Connected to TikTok Backend!'));
 
-      setTimeout(() => setLastAction(null), 2500);
+    socket.on('tiktok-event', (data) => {
+      if (data.type === 'FOLLOW') {
+        setFollowQueue(prev => [...prev, data]);
+      } else if (data.type === 'POP') {
+        setPopQueue(prev => [...prev, data]);
+      } else if (data.type === 'CHAT') {
+        const msg = (data.text || "").toUpperCase();
+        if (msg.includes('P') && msg.includes('O')) {
+          setPopQueue(prev => [...prev, { type: 'POP', name: data.name }]);
+        }
+      }
+    });
+
+    return () => socket.disconnect();
+  }, []);
+
+  // --- SMART QUEUE PROCESSOR WITH AUDIO ---
+  useEffect(() => {
+    if (isPopping || isReady) return;
+
+    const timer = setTimeout(() => {
+      if (isPhase1) {
+        if (popQueue.length > 0) setPopQueue([]);
+
+        if (followQueue.length > 0) {
+          const event = followQueue[0];
+          setFollowQueue(prev => prev.slice(1));
+
+          // 3. TRIGGER AUDIO: Follow
+          playFollowSound();
+
+          const newCount = followCount + 1;
+          setFollowCount(newCount);
+          setAvatars(prev => [...prev.slice(-4), { id: Math.random(), name: event.name, type: 'FOLLOW' }]);
+          spawnParticles('#fe2c55', 15, 1.5);
+          if (newCount >= MAX) triggerFlash();
+        }
+      } else if (isPhase2) {
+        if (popQueue.length > 0) {
+          const event = popQueue[0];
+          setPopQueue(prev => prev.slice(1));
+
+          // 4. TRIGGER AUDIO: Pop
+          playPopSound();
+
+          const newCount = popCount + 1;
+          setPopCount(newCount);
+
+          if (popCount === 0) setAvatars([{ id: Math.random(), name: event.name, type: 'POP' }]);
+          else setAvatars(prev => [...prev.slice(-4), { id: Math.random(), name: event.name, type: 'POP' }]);
+
+          spawnParticles('#69e9b5', 15, 1.5);
+          if (newCount >= MAX) {
+            triggerFlash();
+            setTimeout(() => {
+              spawnParticles('#fe2c55', 40, 2.5);
+              spawnParticles('#ffffff', 25, 3);
+              spawnParticles('#69e9b5', 25, 2.5);
+            }, 100);
+          }
+        }
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [followQueue, popQueue, isPhase1, isPhase2, isPopping, isReady, followCount, popCount, spawnParticles, triggerFlash, playFollowSound, playPopSound]);
+
+  // --- CONTINUOUS EFFECTS ---
+  useEffect(() => {
+    let interval;
+    if (isPopping) {
+      interval = setInterval(() => {
+        spawnParticles('#fe2c55', 6, 2.5);
+        spawnParticles('#fbbf24', 4, 3);
+        spawnParticles('#ffffff', 3, 3.5);
+      }, 100);
+    } else if (isReady) {
+      interval = setInterval(() => {
+        spawnParticles('#69e9b5', 2, 0.5);
+        spawnParticles('#fe2c55', 1, 0.8);
+      }, 250);
     }
-  };
+    return () => clearInterval(interval);
+  }, [isPopping, isReady, spawnParticles]);
 
-  const resetTracker = () => {
-    setFollowCount(0);
-    setPopCount(0);
-    setLastAction(null);
-  };
+  const queueRemoteEvents = useCallback((type, count = 1) => {
+    const events = Array.from({ length: Math.max(1, Number(count) || 1) }, (_, index) => ({
+      type,
+      name: type === 'FOLLOW' ? `Remote Follow ${index + 1}` : `Remote POP ${index + 1}`
+    }));
 
-  const followProgress = (followCount / 5) * 100;
-  const popProgress = (popCount / 5) * 100;
+    if (type === 'FOLLOW') setFollowQueue(prev => [...prev, ...events]);
+    else setPopQueue(prev => [...prev, ...events]);
+  }, []);
+
+  const doReset = useCallback(() => {
+    if (isPopping) return;
+    setIsPopping(true);
+    triggerFlash();
+
+    // 5. TRIGGER AUDIO: Explosion
+    playExplosionSound();
+
+    spawnParticles('#fe2c55', 50, 4);
+    spawnParticles('#ffffff', 40, 4.5);
+    spawnParticles('#fbbf24', 30, 3.5);
+
+    setTimeout(() => {
+      setFollowCount(0);
+      setPopCount(0);
+      setAvatars([]);
+      setPopQueue([]);
+      setIsPopping(false);
+    }, 2200);
+  }, [isPopping, triggerFlash, playExplosionSound, spawnParticles]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAdminCommands((command) => {
+      if (!command?.id || command.id === lastAdminCommandId.current) return;
+      lastAdminCommandId.current = command.id;
+
+      switch (command.type) {
+        case 'RESET':
+          doReset();
+          break;
+        case 'QUEUE_FOLLOW':
+          queueRemoteEvents('FOLLOW', command.payload ?? 1);
+          break;
+        case 'QUEUE_POP':
+          queueRemoteEvents('POP', command.payload ?? 1);
+          break;
+        case 'ENABLE_AUDIO':
+          setIsAudioEnabled(true);
+          break;
+        case 'DISABLE_AUDIO':
+          setIsAudioEnabled(false);
+          break;
+        case 'TOGGLE_AUDIO':
+          setIsAudioEnabled(prev => !prev);
+          break;
+        default:
+          break;
+      }
+    }, (remoteState) => {
+      if (typeof remoteState.audioEnabled === 'boolean') {
+        setIsAudioEnabled(remoteState.audioEnabled);
+      }
+    });
+
+    return () => unsubscribe?.();
+  }, [doReset, queueRemoteEvents, setIsAudioEnabled]);
+
+  // --- DEV TOOLS MOCK ---
+  const addMockEvent = (type) => {
+    const data = { type, name: `User${Math.floor(Math.random() * 9999)}` };
+    if (type === 'FOLLOW') setFollowQueue(prev => [...prev, data]);
+    else setPopQueue(prev => [...prev, data]);
+  };
 
   return (
-    <div className="min-h-screen bg-[#060816] text-white overflow-hidden relative">
-      {/* background */}
-      <div className="absolute inset-0">
-        <div className="absolute top-[-120px] left-[-100px] w-[400px] h-[400px] bg-cyan-500/20 blur-[120px]" />
-        <div className="absolute bottom-[-120px] right-[-100px] w-[400px] h-[400px] bg-orange-500/20 blur-[120px]" />
+    <div className="min-h-screen w-full flex flex-col items-center justify-center p-8 font-sans bg-transparent relative">
 
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px]" />
-      </div>
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes floatP { 0% { opacity: 1; transform: translateY(0) scale(0.5); } 100% { opacity: 0; transform: translateY(-200px) scale(2); } }
+        @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(0.8); } }
+        @keyframes uiShake { 0%, 100% {transform: translate(0, 0) rotate(0deg);} 20% {transform: translate(-4px, 3px) rotate(-2deg);} 40% {transform: translate(4px, -3px) rotate(2deg);} 60% {transform: translate(-4px, -3px) rotate(0deg);} 80% {transform: translate(4px, 3px) rotate(-2deg);} }
+        .shake-active { animation: uiShake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        .shake-extreme { animation: uiShake 0.2s infinite cubic-bezier(.36,.07,.19,.97) both; }
+      `}} />
 
-      {/* main desktop layout */}
-      <div className="relative z-10 flex h-screen">
-        {/* LEFT PANEL */}
-        <div className="w-[320px] border-r border-white/10 bg-white/5 backdrop-blur-xl p-6 flex flex-col">
-          {/* logo */}
-          <div className="flex items-center gap-3 mb-10">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
-              <Zap size={24} />
+      <AnimatePresence>
+        {flash && (
+          <motion.div initial={{ opacity: 1 }} animate={{ opacity: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.4 }} className="fixed inset-0 bg-white pointer-events-none z-50 mix-blend-overlay" />
+        )}
+      </AnimatePresence>
+
+      <motion.div
+        animate={{
+          boxShadow: isPopping ? '0 0 120px rgba(254,44,85,1)' :
+                     isReady ? ['0 0 30px rgba(254,44,85,0.3)', '0 0 80px rgba(254,44,85,0.8)', '0 0 30px rgba(254,44,85,0.3)'] :
+                     '0 0 0px rgba(0,0,0,0)'
+        }}
+        transition={{ repeat: isReady && !isPopping ? Infinity : 0, duration: 0.8 }}
+        className={`relative w-[660px] h-[440px] bg-[#0a0a0a] rounded-[24px] overflow-hidden flex flex-row border border-white/10 ${flash ? 'shake-active' : ''} ${isPopping ? 'shake-extreme bg-[#1a0509]' : ''} transition-colors duration-300`}
+      >
+        <div ref={particlesRef} className="absolute inset-0 pointer-events-none z-10" />
+
+        {/* --- LEFT PANEL --- */}
+        <div className="w-[400px] h-full flex flex-col justify-between p-7 relative z-20">
+          <div className="w-full flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-[11px] font-black text-[#fe2c55] uppercase tracking-widest drop-shadow-[0_0_8px_rgba(254,44,85,0.8)]">
+              <div className="w-[8px] h-[8px] rounded-full bg-[#fe2c55] animate-[pulseDot_0.8s_infinite] shadow-[0_0_8px_#fe2c55]" />
+              Live
             </div>
 
-            <div>
-              <h1 className="text-xl font-black tracking-wide">
-                TOTEM CORE
-              </h1>
-              <p className="text-xs text-gray-400 uppercase tracking-[0.3em]">
-                Stream Event Tracker
-              </p>
-            </div>
-          </div>
-
-          {/* phase cards */}
-          <div className="space-y-5">
-            {/* follow phase */}
-            <motion.div
-              animate={{
-                borderColor: isPhase1
-                  ? "rgba(34,211,238,0.7)"
-                  : "rgba(255,255,255,0.08)",
-              }}
-              className="bg-[#0c1024] rounded-3xl border p-5"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-xs text-cyan-300 uppercase tracking-widest">
-                    Phase 01
-                  </p>
-                  <h2 className="text-lg font-bold">Follow Charge</h2>
-                </div>
-
-                <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 flex items-center justify-center">
-                  <Users className="text-cyan-300" />
-                </div>
-              </div>
-
-              <div className="h-4 bg-black/40 rounded-full overflow-hidden mb-3">
-                <motion.div
-                  animate={{ width: `${followProgress}%` }}
-                  transition={{ type: "spring", stiffness: 70 }}
-                  className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"
-                />
-              </div>
-
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-400">Followers</span>
-                <span className="font-bold text-cyan-300">
-                  {followCount}/5
-                </span>
-              </div>
-            </motion.div>
-
-            {/* pop phase */}
-            <motion.div
-              animate={{
-                borderColor: isPhase2
-                  ? "rgba(249,115,22,0.7)"
-                  : "rgba(255,255,255,0.08)",
-              }}
-              className="bg-[#0c1024] rounded-3xl border p-5"
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-xs text-orange-300 uppercase tracking-widest">
-                    Phase 02
-                  </p>
-                  <h2 className="text-lg font-bold">POP Spam</h2>
-                </div>
-
-                <div className="w-12 h-12 rounded-2xl bg-orange-500/20 flex items-center justify-center">
-                  <Flame className="text-orange-300" />
-                </div>
-              </div>
-
-              <div className="h-4 bg-black/40 rounded-full overflow-hidden mb-3">
-                <motion.div
-                  animate={{ width: `${popProgress}%` }}
-                  transition={{ type: "spring", stiffness: 70 }}
-                  className="h-full bg-gradient-to-r from-orange-400 to-red-500 rounded-full"
-                />
-              </div>
-
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-400">POP Messages</span>
-                <span className="font-bold text-orange-300">
-                  {popCount}/5
-                </span>
-              </div>
-            </motion.div>
-
-            {/* status */}
-            <div className="bg-gradient-to-br from-[#10162e] to-[#0a0f22] border border-white/10 rounded-3xl p-5">
-              <p className="text-xs uppercase tracking-[0.3em] text-gray-400 mb-2">
-                Current Status
-              </p>
-
-              <div className="flex items-center gap-3">
-                {isReady ? (
-                  <>
-                    <CheckCircle2 className="text-green-400" />
-                    <span className="font-bold text-green-300">
-                      Totem Fully Charged
-                    </span>
-                  </>
-                ) : isPhase2 ? (
-                  <>
-                    <Flame className="text-orange-400" />
-                    <span className="font-bold text-orange-300">
-                      Awaiting POP Spam
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <Users className="text-cyan-400" />
-                    <span className="font-bold text-cyan-300">
-                      Awaiting Followers
-                    </span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* controls */}
-          <div className="mt-auto space-y-3">
-            <button
-              onClick={simulateFollow}
-              disabled={!isPhase1}
-              className="w-full h-12 rounded-2xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-gray-800 disabled:text-gray-500 font-bold transition-all"
-            >
-              + Add Follow
-            </button>
-
-            <button
-              onClick={simulatePop}
-              disabled={!isPhase2}
-              className="w-full h-12 rounded-2xl bg-orange-500 hover:bg-orange-400 disabled:bg-gray-800 disabled:text-gray-500 font-bold transition-all"
-            >
-              + Add POP
-            </button>
-
-            <button
-              onClick={resetTracker}
-              className="w-full h-12 rounded-2xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-300 font-bold transition-all flex items-center justify-center gap-2"
-            >
-              <RotateCcw size={18} />
-              Reset Session
-            </button>
-          </div>
-        </div>
-
-        {/* CENTER */}
-        <div className="flex-1 flex flex-col items-center justify-center relative px-10">
-          {/* title */}
-          <div className="absolute top-8 left-10">
-            <h1 className="text-5xl font-black tracking-tight">
-              Totem Reactor
-            </h1>
-
-            <p className="text-gray-400 mt-2 text-lg">
-              Interactive live event charging system
-            </p>
-          </div>
-
-          {/* center reactor */}
-          <motion.div
-            animate={{
-              scale: isReady ? [1, 1.04, 1] : [1, 1.01, 1],
-            }}
-            transition={{
-              repeat: Infinity,
-              duration: isReady ? 1 : 2,
-            }}
-            className="relative"
-          >
-            {/* glow */}
-            <motion.div
-              animate={{
-                scale: isReady ? [1, 1.3, 1] : [1, 1.1, 1],
-                opacity: isReady ? [0.7, 1, 0.7] : [0.3, 0.5, 0.3],
-              }}
-              transition={{
-                repeat: Infinity,
-                duration: 2,
-              }}
-              className={`absolute inset-0 rounded-full blur-[80px]
-              ${
-                isReady
-                  ? "bg-yellow-400/60"
-                  : isPhase2
-                  ? "bg-orange-500/40"
-                  : "bg-cyan-500/40"
-              }`}
-            />
-
-            {/* reactor circle */}
-            <div className="relative w-[420px] h-[420px] rounded-full border border-white/10 bg-[#0d1228]/90 backdrop-blur-2xl flex items-center justify-center shadow-2xl">
-              {/* animated rings */}
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{
-                  repeat: Infinity,
-                  duration: 15,
-                  ease: "linear",
-                }}
-                className="absolute w-[360px] h-[360px] rounded-full border border-dashed border-white/10"
-              />
-
-              <motion.div
-                animate={{ rotate: -360 }}
-                transition={{
-                  repeat: Infinity,
-                  duration: 10,
-                  ease: "linear",
-                }}
-                className="absolute w-[300px] h-[300px] rounded-full border border-dashed border-white/10"
-              />
-
-              {/* totem */}
-              <motion.div
-                animate={{
-                  y: [-10, 10, -10],
-                }}
-                transition={{
-                  repeat: Infinity,
-                  duration: 3,
-                  ease: "easeInOut",
-                }}
-                className="flex flex-col items-center"
-              >
-                <img
-                  src="./totem.png"
-                  alt="Totem"
-                  className="w-52 h-52 object-contain drop-shadow-[0_0_40px_rgba(255,255,255,0.35)]"
-                />
-
-                <AnimatePresence mode="wait">
-                  {isReady ? (
-                    <motion.div
-                      key="ready"
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      className="text-center mt-4"
-                    >
-                      <h2 className="text-5xl font-black text-yellow-300 tracking-wide">
-                        TAKE FLIGHT
-                      </h2>
-
-                      <p className="text-yellow-100/80 mt-2 tracking-[0.4em] uppercase text-sm">
-                        Reactor Fully Charged
-                      </p>
-                    </motion.div>
-                  ) : isPhase2 ? (
-                    <motion.div
-                      key="pop"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="text-center mt-4"
-                    >
-                      <h2 className="text-4xl font-black text-orange-300">
-                        SPAM POP
-                      </h2>
-
-                      <p className="text-orange-100/70 mt-2 uppercase tracking-[0.3em] text-sm">
-                        Community ignition required
-                      </p>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="follow"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="text-center mt-4"
-                    >
-                      <h2 className="text-4xl font-black text-cyan-300">
-                        CHARGE THE TOTEM
-                      </h2>
-
-                      <p className="text-cyan-100/70 mt-2 uppercase tracking-[0.3em] text-sm">
-                        Waiting for followers
-                      </p>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* RIGHT PANEL */}
-        <div className="w-[320px] border-l border-white/10 bg-white/5 backdrop-blur-xl p-6 flex flex-col">
-          <div className="mb-6">
-            <p className="text-xs uppercase tracking-[0.3em] text-gray-400">
-              Live Feed
-            </p>
-
-            <h2 className="text-2xl font-black mt-2">
-              Recent Activity
-            </h2>
-          </div>
-
-          {/* activity card */}
-          <div className="flex-1 rounded-3xl bg-[#0c1024] border border-white/10 p-5 overflow-hidden relative">
             <AnimatePresence>
-              {lastAction ? (
-                <motion.div
-                  key={lastAction.name + lastAction.type}
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className={`rounded-2xl p-5 border mb-4
-                  ${
-                    lastAction.type === "FOLLOW"
-                      ? "bg-cyan-500/10 border-cyan-500/30"
-                      : "bg-orange-500/10 border-orange-500/30"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className={`w-12 h-12 rounded-2xl flex items-center justify-center
-                      ${
-                        lastAction.type === "FOLLOW"
-                          ? "bg-cyan-500/20"
-                          : "bg-orange-500/20"
-                      }`}
-                    >
-                      {lastAction.type === "FOLLOW" ? (
-                        <Users className="text-cyan-300" />
-                      ) : (
-                        <Flame className="text-orange-300" />
-                      )}
-                    </div>
+              {followQueue.length > 0 && (!isPhase1 || isReady || isPopping) && (
+                <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }} className="flex gap-2">
+                  <span className="text-[10px] text-white font-bold bg-[#fe2c55]/80 px-2 py-1 rounded-md shadow-[0_0_10px_rgba(254,44,85,0.5)]">
+                    BANKED FOLLOWS: {followQueue.length}
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-                    <div>
-                      <h3 className="font-bold text-lg">
-                        {lastAction.name}
-                      </h3>
+            <motion.div
+              key={isPhase1 ? 'p1' : isPhase2 ? 'p2' : 'p3'}
+              initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              className={`text-[11px] font-black tracking-widest uppercase px-3 py-1.5 rounded-full
+              ${isPhase1 ? 'bg-[#fe2c55]/20 text-[#fe2c55] shadow-[0_0_10px_rgba(254,44,85,0.3)]' :
+                isPhase2 ? 'bg-[#69e9b5]/20 text-[#69e9b5] shadow-[0_0_10px_rgba(105,233,181,0.3)]' :
+                'bg-[#fe2c55] text-white animate-[pulseDot_1s_infinite] shadow-[0_0_15px_rgba(254,44,85,0.8)]'}`}
+            >
+              {isPhase1 ? 'Phase 1 — Follow' : isPhase2 ? 'Phase 2 — Spam POP' : 'Totem Charged!'}
+            </motion.div>
+          </div>
 
-                      <p className="text-sm text-gray-400">
-                        {lastAction.type === "FOLLOW"
-                          ? "followed the stream"
-                          : 'typed "POP" in chat'}
-                      </p>
-                    </div>
-                  </div>
+          <div className="w-full flex-1 flex flex-col items-center justify-center -mt-4">
+            <AnimatePresence mode="wait">
+              {isPopping ? (
+                <motion.div key="popping" initial={{ scale: 0.2, opacity: 0 }} animate={{ scale: 1.3, opacity: 1 }} exit={{ scale: 0.5, opacity: 0 }} className="flex flex-col items-center">
+                  <Image src={popGif} alt="Totem Popping!" width={160} height={160} unoptimized={true} className="object-contain drop-shadow-[0_0_50px_rgba(254,44,85,1)]" />
+                  <motion.h2 animate={{ scale: [1, 1.1, 1], rotate: [-2, 2, -2] }} transition={{ repeat: Infinity, duration: 0.2 }} className="text-[32px] font-black text-[#fe2c55] tracking-widest mt-4 uppercase drop-shadow-[0_0_20px_rgba(254,44,85,1)]">TOTEM POPPED!</motion.h2>
+                </motion.div>
+              ) : isReady ? (
+                <motion.div key="climax" initial={{ opacity: 0, scale: 0.5 }} animate={{ opacity: 1, scale: 1 }} className="w-full flex flex-col items-center">
+                  <motion.div animate={{ y: [-15, 15, -15] }} transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }} className="relative flex justify-center mb-6">
+                    <motion.div animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0.9, 0.5] }} transition={{ repeat: Infinity, duration: 1 }} className="absolute w-28 h-28 bg-[#fe2c55] rounded-full blur-[30px] -z-10" />
+                    <Image src={totemImg} alt="Totem" width={140} height={140} className="object-contain drop-shadow-[0_0_20px_rgba(254,44,85,0.9)]" priority={true} />
+                  </motion.div>
+                  <motion.div animate={{ boxShadow: ['0 0 0px rgba(254,44,85,0)', '0 0 25px rgba(254,44,85,0.8)', '0 0 0px rgba(254,44,85,0)'] }} transition={{ repeat: Infinity, duration: 0.8 }} className="w-full text-center p-4 bg-[#fe2c55]/20 border border-[#fe2c55]/50 rounded-xl relative overflow-hidden">
+                    <motion.div animate={{ left: ['-100%', '200%'] }} transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }} className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-transparent via-white/40 to-transparent skew-x-12" />
+                    <h2 className="text-[26px] font-black text-white tracking-widest drop-shadow-[0_0_10px_rgba(254,44,85,0.9)]">TOTEM POP READY!</h2>
+                  </motion.div>
                 </motion.div>
               ) : (
-                <div className="h-full flex items-center justify-center text-center text-gray-500">
-                  Waiting for activity...
-                </div>
+                <motion.div key="labels" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="flex flex-col items-center">
+                  <motion.div animate={{ y: [-6, 6, -6] }} transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }} className="mb-6 relative">
+                    <motion.div animate={{ opacity: isPhase2 ? [0.3, 0.7, 0.3] : 0, scale: isPhase2 ? [1, 1.2, 1] : 1 }} transition={{ repeat: Infinity, duration: 1 }} className="absolute inset-0 bg-[#69e9b5] rounded-full blur-[20px] -z-10" />
+                    <Image src={totemImg} alt="Charging Totem" width={80} height={80} className={`object-contain transition-all duration-300 ${isPhase1 ? 'opacity-40 grayscale-[60%]' : 'opacity-100 drop-shadow-[0_0_15px_rgba(105,233,181,0.6)] scale-110'}`} />
+                  </motion.div>
+                  <h1 className={`text-[32px] font-black tracking-tight leading-none ${isPhase2 ? 'text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.6)]' : 'text-white/90'}`}>
+                    {isPhase1 ? 'Charge the Totem' : 'Spam POP Now!'}
+                  </h1>
+                  <p className={`text-[15px] mt-2 tracking-widest font-black uppercase ${isPhase2 ? 'text-[#69e9b5]' : 'text-white/40'}`}>
+                    {isPhase1 ? 'Follow to charge the totem' : 'Type POP in chat to ignite!'}
+                  </p>
+                </motion.div>
               )}
             </AnimatePresence>
           </div>
 
-          {/* bottom card */}
-          <div className="mt-5 rounded-3xl bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-500/20 p-5">
-            <div className="flex items-center gap-3 mb-3">
-              <Rocket className="text-cyan-300" />
-              <h3 className="font-bold">Mission Goal</h3>
+          <div className={`w-full transition-all duration-300 ${isPopping ? 'opacity-0 translate-y-4' : 'opacity-100'}`}>
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-[13px] font-bold text-white/50 uppercase tracking-wider">{isPhase1 ? 'Followers' : 'POP messages'}</span>
+              <motion.strong key={isPhase1 ? followCount : popCount} initial={{ scale: 2, color: '#ffffff' }} animate={{ scale: 1, color: isPhase1 ? '#fe2c55' : '#69e9b5' }} className="text-[18px] font-black drop-shadow-[0_0_8px_currentColor]">
+                <span className="text-white">{isPhase1 ? followCount : popCount}</span> / {MAX}
+              </motion.strong>
             </div>
-
-            <p className="text-sm text-gray-300 leading-relaxed">
-              Reach 5 followers to unlock the POP phase. Once the
-              community sends 5 POP messages, the totem launches into
-              full reactor mode.
-            </p>
+            <div className="flex gap-2 w-full h-[14px]">
+              {[...Array(MAX)].map((_, i) => (
+                <div key={i} className="flex-1 rounded-full bg-white/10 overflow-hidden relative shadow-inner">
+                  <motion.div animate={{ scaleX: i < (isPhase1 ? followCount : popCount) ? 1 : 0 }} className={`absolute inset-0 origin-left rounded-full shadow-[0_0_12px_currentColor] ${!isPhase1 ? 'bg-[#69e9b5] text-[#69e9b5]' : 'bg-[#fe2c55] text-[#fe2c55]'}`} />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
+
+        {/* --- RIGHT PANEL: LIVE FEED --- */}
+        <div className="w-[260px] h-full bg-white/[0.02] border-l border-white/10 shadow-[-10px_0_30px_rgba(0,0,0,0.5)] flex flex-col relative z-20 overflow-hidden">
+          <div className="w-full bg-black/40 py-3 border-b border-white/10 text-center shrink-0">
+            <span className="text-[11px] font-black text-white/50 tracking-[0.2em] uppercase">Live Action Feed</span>
+          </div>
+          <div className={`flex-1 w-full flex flex-col gap-2.5 p-4 overflow-hidden justify-start transition-opacity duration-300 ${isPopping ? 'opacity-0' : 'opacity-100'}`}>
+            <AnimatePresence>
+              {avatars.length > 0 ? avatars.map((avatar, i) => (
+                  <motion.div key={avatar.id} initial={{ opacity: 0, x: 50, scale: 0.8 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.8, x: -50 }} className={`w-full p-2.5 px-3 rounded-xl border flex flex-col justify-center shadow-lg ${avatar.type === 'FOLLOW' ? 'bg-[#fe2c55]/10 border-[#fe2c55]/30 shadow-[#fe2c55]/10' : 'bg-[#69e9b5]/10 border-[#69e9b5]/30 shadow-[#69e9b5]/10'}`}>
+                     <span className={`text-[10px] font-black uppercase tracking-widest ${avatar.type === 'FOLLOW' ? 'text-[#fe2c55]/70' : 'text-[#69e9b5]/70'}`}>{i + 1}. {avatar.type === 'FOLLOW' ? 'Followed' : 'Spammed POP'}</span>
+
+                     {/* TEXT COLOR CHANGED TO WHITE WITH COLORED GLOW PRESERVED */}
+                     <strong className={`text-[20px] leading-none font-black tracking-tight truncate mt-0.5 text-white ${avatar.type === 'FOLLOW' ? 'drop-shadow-[0_0_8px_rgba(254,44,85,0.8)]' : 'drop-shadow-[0_0_8px_rgba(105,233,181,0.8)]'}`}>{avatar.name}</strong>
+
+                  </motion.div>
+                )) : (
+                <motion.div key="empty" className="w-full h-full flex items-center justify-center">
+                  <span className="text-[13px] font-black text-white/20 tracking-widest uppercase text-center">Waiting for<br/>Chat Action...</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* DEV CONTROLS + AUDIO TOGGLE */}
+      <div className="fixed bottom-10 left-1/2 transform -translate-x-1/2 flex items-center gap-4 bg-gray-900/90 backdrop-blur-md p-4 rounded-2xl border border-gray-700 shadow-2xl z-50">
+        <div className="absolute -top-3 left-4 bg-gray-800 text-xs text-gray-400 px-2 py-0.5 rounded font-mono font-bold border border-gray-600">Admin Controls</div>
+
+        {/* 6. AUDIO UNMUTE TOGGLE */}
+        <button
+          onClick={() => setIsAudioEnabled(!isAudioEnabled)}
+          className={`w-[130px] h-[46px] rounded-xl font-black text-[14px] uppercase flex items-center justify-center transition-all
+          ${isAudioEnabled ? 'bg-blue-500 text-white shadow-[0_0_15px_rgba(59,130,246,0.4)] hover:scale-95' : 'bg-gray-700 text-white/50 border border-gray-500 hover:scale-95'}`}
+        >
+          {isAudioEnabled ? '🔊 Audio ON' : '🔇 Audio OFF'}
+        </button>
+
+        <div className="w-[1px] h-8 bg-gray-600 mx-2" />
+
+        <button onClick={() => addMockEvent(isPhase1 ? 'FOLLOW' : 'POP')} className={`w-[140px] h-[46px] rounded-xl font-black text-[14px] tracking-widest uppercase flex items-center justify-center transition-all ${isPhase1 ? 'bg-[#fe2c55] text-white hover:scale-95' : 'bg-[#69e9b5] text-[#0a0a0a] hover:scale-95'}`}>Queue Mock</button>
+        <div className="w-[1px] h-8 bg-gray-600 mx-2" />
+        <button onClick={doReset} disabled={isPopping} className={`w-[60px] h-[46px] rounded-xl flex items-center justify-center text-white/90 font-bold text-[22px] transition-all disabled:opacity-30 ${isReady ? 'bg-[#fe2c55] animate-pulse hover:scale-95' : 'bg-gray-700 border border-gray-500 hover:scale-95'}`}>↻</button>
       </div>
+
     </div>
   );
 }
