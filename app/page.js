@@ -1,35 +1,50 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Rocket,
+  Flame,
+  Users,
+  Zap,
+  RotateCcw,
+  CheckCircle2,
+} from "lucide-react";
 
 export default function TotemTracker() {
-  // --- STATE MANAGEMENT ---
   const [followCount, setFollowCount] = useState(0);
   const [popCount, setPopCount] = useState(0);
   const [lastAction, setLastAction] = useState(null);
 
   const mockUsers = ["Darwin", "Ken", "Ralph", "Eunice", "RandomViewer_99"];
 
-  // --- DERIVED UI STATES ---
   const isPhase1 = followCount < 5;
   const isPhase2 = followCount >= 5 && popCount < 5;
   const isReady = popCount >= 5;
 
-  /* --- DEV TEST FUNCTIONS --- */
   const simulateFollow = () => {
     if (followCount < 5) {
       setFollowCount((prev) => prev + 1);
-      setLastAction({ name: mockUsers[followCount], type: 'FOLLOW' });
-      setTimeout(() => setLastAction(null), 3000);
+
+      setLastAction({
+        name: mockUsers[followCount],
+        type: "FOLLOW",
+      });
+
+      setTimeout(() => setLastAction(null), 2500);
     }
   };
 
   const simulatePop = () => {
     if (isPhase2 && popCount < 5) {
       setPopCount((prev) => prev + 1);
-      setLastAction({ name: mockUsers[popCount], type: 'POP' });
-      setTimeout(() => setLastAction(null), 3000);
+
+      setLastAction({
+        name: mockUsers[popCount],
+        type: "POP",
+      });
+
+      setTimeout(() => setLastAction(null), 2500);
     }
   };
 
@@ -38,188 +53,400 @@ export default function TotemTracker() {
     setPopCount(0);
     setLastAction(null);
   };
-  /* ------------------------- */
+
+  const followProgress = (followCount / 5) * 100;
+  const popProgress = (popCount / 5) * 100;
 
   return (
-    <motion.div
-      animate={{
-        backgroundColor: isReady ? ['rgba(0,0,0,0)', 'rgba(234, 179, 8, 0.4)', 'rgba(220, 38, 38, 0.3)', 'rgba(0,0,0,0)'] : 'rgba(0,0,0,0)'
-      }}
-      transition={{ repeat: isReady ? Infinity : 0, duration: 0.6 }}
-      className="h-screen w-full flex flex-col items-center justify-start pt-10 overflow-hidden relative font-sans"
-    >
+    <div className="min-h-screen bg-[#060816] text-white overflow-hidden relative">
+      {/* background */}
+      <div className="absolute inset-0">
+        <div className="absolute top-[-120px] left-[-100px] w-[400px] h-[400px] bg-cyan-500/20 blur-[120px]" />
+        <div className="absolute bottom-[-120px] right-[-100px] w-[400px] h-[400px] bg-orange-500/20 blur-[120px]" />
 
-      {/* --- THE MAIN UI --- */}
-      <AnimatePresence mode="wait">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px]" />
+      </div>
 
-        {/* STATE 3: THE CLIMAX WITH TOTEM ICON */}
-        {isReady && (
-          <motion.div
-            key="climax"
-            initial={{ scale: 0.5, opacity: 0, y: 50 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            className="flex flex-col items-center justify-center mt-10"
-          >
-            {/* The Floating, Glowing Totem Image */}
+      {/* main desktop layout */}
+      <div className="relative z-10 flex h-screen">
+        {/* LEFT PANEL */}
+        <div className="w-[320px] border-r border-white/10 bg-white/5 backdrop-blur-xl p-6 flex flex-col">
+          {/* logo */}
+          <div className="flex items-center gap-3 mb-10">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/30">
+              <Zap size={24} />
+            </div>
+
+            <div>
+              <h1 className="text-xl font-black tracking-wide">
+                TOTEM CORE
+              </h1>
+              <p className="text-xs text-gray-400 uppercase tracking-[0.3em]">
+                Stream Event Tracker
+              </p>
+            </div>
+          </div>
+
+          {/* phase cards */}
+          <div className="space-y-5">
+            {/* follow phase */}
             <motion.div
               animate={{
-                y: [-15, 15, -15],
+                borderColor: isPhase1
+                  ? "rgba(34,211,238,0.7)"
+                  : "rgba(255,255,255,0.08)",
               }}
-              transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-              className="relative mb-6"
+              className="bg-[#0c1024] rounded-3xl border p-5"
             >
-              {/* Fallback glow behind the image */}
-              <motion.div
-                animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
-                transition={{ repeat: Infinity, duration: 1 }}
-                className="absolute inset-0 bg-yellow-500 rounded-full blur-[50px] -z-10"
-              />
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-xs text-cyan-300 uppercase tracking-widest">
+                    Phase 01
+                  </p>
+                  <h2 className="text-lg font-bold">Follow Charge</h2>
+                </div>
 
-              {/* Make sure to put totem.png in your /public folder! */}
-              <img
-                src="./totem.png"
-                alt="Fully Charged Totem"
-                className="w-40 h-40 object-contain drop-shadow-[0_0_25px_rgba(250,204,21,0.8)]"
-                onError={(e) => {
-                  e.target.style.display='none';
-                  e.target.nextSibling.style.display='flex';
-                }}
-              />
-              {/* Fallback Emoji just in case the image doesn't load immediately */}
-              <div className="hidden w-40 h-40 items-center justify-center text-8xl drop-shadow-[0_0_25px_rgba(250,204,21,0.8)]">
-                🗿
+                <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 flex items-center justify-center">
+                  <Users className="text-cyan-300" />
+                </div>
+              </div>
+
+              <div className="h-4 bg-black/40 rounded-full overflow-hidden mb-3">
+                <motion.div
+                  animate={{ width: `${followProgress}%` }}
+                  transition={{ type: "spring", stiffness: 70 }}
+                  className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400">Followers</span>
+                <span className="font-bold text-cyan-300">
+                  {followCount}/5
+                </span>
               </div>
             </motion.div>
 
-            <motion.h1
-              animate={{ scale: [1, 1.05, 1] }}
-              transition={{ repeat: Infinity, duration: 0.4 }}
-              className="text-4xl text-white font-black tracking-[0.2em] mb-2 drop-shadow-lg"
+            {/* pop phase */}
+            <motion.div
+              animate={{
+                borderColor: isPhase2
+                  ? "rgba(249,115,22,0.7)"
+                  : "rgba(255,255,255,0.08)",
+              }}
+              className="bg-[#0c1024] rounded-3xl border p-5"
             >
-              CHARGE COMPLETE
-            </motion.h1>
-            <motion.h2
-              animate={{ scale: [1, 1.1, 1] }}
-              transition={{ repeat: Infinity, duration: 0.4 }}
-              className="text-7xl text-yellow-400 font-black tracking-widest drop-shadow-[0_0_25px_rgba(250,204,21,1)]"
-            >
-              TAKE FLIGHT!
-            </motion.h2>
-          </motion.div>
-        )}
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-xs text-orange-300 uppercase tracking-widest">
+                    Phase 02
+                  </p>
+                  <h2 className="text-lg font-bold">POP Spam</h2>
+                </div>
 
-        {/* STATE 2: WAITING FOR POPS */}
-        {isPhase2 && (
-          <motion.div
-            key="phase2"
-            initial={{ y: 50, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: -50, opacity: 0 }}
-            className="flex flex-col items-center w-full px-8"
-          >
-            <motion.h1
-              animate={{ scale: [1, 1.05, 1] }}
-              transition={{ repeat: Infinity, duration: 0.8 }}
-              className="text-3xl text-red-400 font-black tracking-widest drop-shadow-[0_0_10px_rgba(248,113,113,0.8)] mb-4"
-            >
-              🔥 SPAM "POP" IN CHAT! 🔥
-            </motion.h1>
+                <div className="w-12 h-12 rounded-2xl bg-orange-500/20 flex items-center justify-center">
+                  <Flame className="text-orange-300" />
+                </div>
+              </div>
 
-            <div className="w-[450px] h-12 bg-gray-900/80 border-4 border-red-600 rounded-full overflow-hidden relative shadow-[0_0_25px_rgba(220,38,38,0.6)]">
-              <motion.div
-                className="h-full bg-gradient-to-r from-red-600 to-orange-400"
-                initial={{ width: 0 }}
-                animate={{ width: `${(popCount / 5) * 100}%` }}
-                transition={{ type: "spring", stiffness: 60, damping: 15 }}
-              />
-              <div className="absolute inset-0 flex items-center justify-center text-3xl font-black text-white drop-shadow-md">
-                {popCount} / 5
+              <div className="h-4 bg-black/40 rounded-full overflow-hidden mb-3">
+                <motion.div
+                  animate={{ width: `${popProgress}%` }}
+                  transition={{ type: "spring", stiffness: 70 }}
+                  className="h-full bg-gradient-to-r from-orange-400 to-red-500 rounded-full"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400">POP Messages</span>
+                <span className="font-bold text-orange-300">
+                  {popCount}/5
+                </span>
+              </div>
+            </motion.div>
+
+            {/* status */}
+            <div className="bg-gradient-to-br from-[#10162e] to-[#0a0f22] border border-white/10 rounded-3xl p-5">
+              <p className="text-xs uppercase tracking-[0.3em] text-gray-400 mb-2">
+                Current Status
+              </p>
+
+              <div className="flex items-center gap-3">
+                {isReady ? (
+                  <>
+                    <CheckCircle2 className="text-green-400" />
+                    <span className="font-bold text-green-300">
+                      Totem Fully Charged
+                    </span>
+                  </>
+                ) : isPhase2 ? (
+                  <>
+                    <Flame className="text-orange-400" />
+                    <span className="font-bold text-orange-300">
+                      Awaiting POP Spam
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Users className="text-cyan-400" />
+                    <span className="font-bold text-cyan-300">
+                      Awaiting Followers
+                    </span>
+                  </>
+                )}
               </div>
             </div>
-          </motion.div>
-        )}
+          </div>
 
-        {/* STATE 1: WAITING FOR FOLLOWS */}
-        {isPhase1 && (
-          <motion.div
-            key="phase1"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ y: -50, opacity: 0 }}
-            className="flex flex-col items-center w-full px-8"
-          >
-            <h1 className="text-2xl text-cyan-300 font-bold tracking-widest drop-shadow-md mb-4 uppercase">
-              Step 1: Follow to Charge
+          {/* controls */}
+          <div className="mt-auto space-y-3">
+            <button
+              onClick={simulateFollow}
+              disabled={!isPhase1}
+              className="w-full h-12 rounded-2xl bg-cyan-500 hover:bg-cyan-400 disabled:bg-gray-800 disabled:text-gray-500 font-bold transition-all"
+            >
+              + Add Follow
+            </button>
+
+            <button
+              onClick={simulatePop}
+              disabled={!isPhase2}
+              className="w-full h-12 rounded-2xl bg-orange-500 hover:bg-orange-400 disabled:bg-gray-800 disabled:text-gray-500 font-bold transition-all"
+            >
+              + Add POP
+            </button>
+
+            <button
+              onClick={resetTracker}
+              className="w-full h-12 rounded-2xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-300 font-bold transition-all flex items-center justify-center gap-2"
+            >
+              <RotateCcw size={18} />
+              Reset Session
+            </button>
+          </div>
+        </div>
+
+        {/* CENTER */}
+        <div className="flex-1 flex flex-col items-center justify-center relative px-10">
+          {/* title */}
+          <div className="absolute top-8 left-10">
+            <h1 className="text-5xl font-black tracking-tight">
+              Totem Reactor
             </h1>
 
-            <div className="w-[400px] h-10 bg-gray-900/80 border-2 border-cyan-600 rounded-full overflow-hidden relative shadow-[0_0_15px_rgba(8,145,178,0.5)]">
+            <p className="text-gray-400 mt-2 text-lg">
+              Interactive live event charging system
+            </p>
+          </div>
+
+          {/* center reactor */}
+          <motion.div
+            animate={{
+              scale: isReady ? [1, 1.04, 1] : [1, 1.01, 1],
+            }}
+            transition={{
+              repeat: Infinity,
+              duration: isReady ? 1 : 2,
+            }}
+            className="relative"
+          >
+            {/* glow */}
+            <motion.div
+              animate={{
+                scale: isReady ? [1, 1.3, 1] : [1, 1.1, 1],
+                opacity: isReady ? [0.7, 1, 0.7] : [0.3, 0.5, 0.3],
+              }}
+              transition={{
+                repeat: Infinity,
+                duration: 2,
+              }}
+              className={`absolute inset-0 rounded-full blur-[80px]
+              ${
+                isReady
+                  ? "bg-yellow-400/60"
+                  : isPhase2
+                  ? "bg-orange-500/40"
+                  : "bg-cyan-500/40"
+              }`}
+            />
+
+            {/* reactor circle */}
+            <div className="relative w-[420px] h-[420px] rounded-full border border-white/10 bg-[#0d1228]/90 backdrop-blur-2xl flex items-center justify-center shadow-2xl">
+              {/* animated rings */}
               <motion.div
-                className="h-full bg-gradient-to-r from-cyan-500 to-blue-500"
-                initial={{ width: 0 }}
-                animate={{ width: `${(followCount / 5) * 100}%` }}
-                transition={{ type: "spring", stiffness: 60, damping: 15 }}
+                animate={{ rotate: 360 }}
+                transition={{
+                  repeat: Infinity,
+                  duration: 15,
+                  ease: "linear",
+                }}
+                className="absolute w-[360px] h-[360px] rounded-full border border-dashed border-white/10"
               />
-              <div className="absolute inset-0 flex items-center justify-center text-2xl font-black text-white drop-shadow-md">
-                {followCount} / 5
-              </div>
+
+              <motion.div
+                animate={{ rotate: -360 }}
+                transition={{
+                  repeat: Infinity,
+                  duration: 10,
+                  ease: "linear",
+                }}
+                className="absolute w-[300px] h-[300px] rounded-full border border-dashed border-white/10"
+              />
+
+              {/* totem */}
+              <motion.div
+                animate={{
+                  y: [-10, 10, -10],
+                }}
+                transition={{
+                  repeat: Infinity,
+                  duration: 3,
+                  ease: "easeInOut",
+                }}
+                className="flex flex-col items-center"
+              >
+                <img
+                  src="./totem.png"
+                  alt="Totem"
+                  className="w-52 h-52 object-contain drop-shadow-[0_0_40px_rgba(255,255,255,0.35)]"
+                />
+
+                <AnimatePresence mode="wait">
+                  {isReady ? (
+                    <motion.div
+                      key="ready"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      className="text-center mt-4"
+                    >
+                      <h2 className="text-5xl font-black text-yellow-300 tracking-wide">
+                        TAKE FLIGHT
+                      </h2>
+
+                      <p className="text-yellow-100/80 mt-2 tracking-[0.4em] uppercase text-sm">
+                        Reactor Fully Charged
+                      </p>
+                    </motion.div>
+                  ) : isPhase2 ? (
+                    <motion.div
+                      key="pop"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="text-center mt-4"
+                    >
+                      <h2 className="text-4xl font-black text-orange-300">
+                        SPAM POP
+                      </h2>
+
+                      <p className="text-orange-100/70 mt-2 uppercase tracking-[0.3em] text-sm">
+                        Community ignition required
+                      </p>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="follow"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="text-center mt-4"
+                    >
+                      <h2 className="text-4xl font-black text-cyan-300">
+                        CHARGE THE TOTEM
+                      </h2>
+
+                      <p className="text-cyan-100/70 mt-2 uppercase tracking-[0.3em] text-sm">
+                        Waiting for followers
+                      </p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
             </div>
           </motion.div>
-        )}
+        </div>
 
-      </AnimatePresence>
+        {/* RIGHT PANEL */}
+        <div className="w-[320px] border-l border-white/10 bg-white/5 backdrop-blur-xl p-6 flex flex-col">
+          <div className="mb-6">
+            <p className="text-xs uppercase tracking-[0.3em] text-gray-400">
+              Live Feed
+            </p>
 
-      {/* --- RECENT ACTION NOTIFICATION (Toast) --- */}
-      <div className="absolute top-56 left-1/2 transform -translate-x-1/2 z-50">
-        <AnimatePresence>
-          {lastAction && !isReady && (
-            <motion.div
-              initial={{ y: -50, opacity: 0, scale: 0.5 }}
-              animate={{ y: 0, opacity: 1, scale: 1 }}
-              exit={{ y: -20, opacity: 0 }}
-              className={`backdrop-blur-md px-6 py-3 rounded-full font-bold text-xl shadow-lg border-2 text-white
-                ${lastAction.type === 'FOLLOW'
-                  ? 'bg-blue-900/80 border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.5)]'
-                  : 'bg-red-900/80 border-orange-400 shadow-[0_0_15px_rgba(251,146,60,0.5)]'
-                }`}
-            >
-              {lastAction.type === 'FOLLOW' ? (
-                <>✨ <span className="text-cyan-300">{lastAction.name}</span> Followed!</>
+            <h2 className="text-2xl font-black mt-2">
+              Recent Activity
+            </h2>
+          </div>
+
+          {/* activity card */}
+          <div className="flex-1 rounded-3xl bg-[#0c1024] border border-white/10 p-5 overflow-hidden relative">
+            <AnimatePresence>
+              {lastAction ? (
+                <motion.div
+                  key={lastAction.name + lastAction.type}
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className={`rounded-2xl p-5 border mb-4
+                  ${
+                    lastAction.type === "FOLLOW"
+                      ? "bg-cyan-500/10 border-cyan-500/30"
+                      : "bg-orange-500/10 border-orange-500/30"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-12 h-12 rounded-2xl flex items-center justify-center
+                      ${
+                        lastAction.type === "FOLLOW"
+                          ? "bg-cyan-500/20"
+                          : "bg-orange-500/20"
+                      }`}
+                    >
+                      {lastAction.type === "FOLLOW" ? (
+                        <Users className="text-cyan-300" />
+                      ) : (
+                        <Flame className="text-orange-300" />
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-bold text-lg">
+                        {lastAction.name}
+                      </h3>
+
+                      <p className="text-sm text-gray-400">
+                        {lastAction.type === "FOLLOW"
+                          ? "followed the stream"
+                          : 'typed "POP" in chat'}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
               ) : (
-                <>🔥 <span className="text-orange-300">{lastAction.name}</span> typed POP!</>
+                <div className="h-full flex items-center justify-center text-center text-gray-500">
+                  Waiting for activity...
+                </div>
               )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+            </AnimatePresence>
+          </div>
+
+          {/* bottom card */}
+          <div className="mt-5 rounded-3xl bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-500/20 p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <Rocket className="text-cyan-300" />
+              <h3 className="font-bold">Mission Goal</h3>
+            </div>
+
+            <p className="text-sm text-gray-300 leading-relaxed">
+              Reach 5 followers to unlock the POP phase. Once the
+              community sends 5 POP messages, the totem launches into
+              full reactor mode.
+            </p>
+          </div>
+        </div>
       </div>
-
-      {/* --- DEV CONTROLS (Hide this later via CSS or delete it) --- */}
-      <div className="absolute bottom-10 flex space-x-4 bg-black/90 p-4 rounded-xl border border-gray-600 z-50 shadow-2xl">
-        <div className="text-white text-sm absolute -top-6 left-2 font-mono text-gray-400 font-bold">Dev Tools (Test the Flow)</div>
-
-        <button
-          onClick={simulateFollow}
-          disabled={!isPhase1}
-          className="bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-800 disabled:text-gray-500 text-white px-4 py-2 rounded font-bold transition-colors w-32"
-        >
-          +1 Follow
-        </button>
-
-        <button
-          onClick={simulatePop}
-          disabled={!isPhase2}
-          className="bg-orange-600 hover:bg-orange-500 disabled:bg-gray-800 disabled:text-gray-500 text-white px-4 py-2 rounded font-bold transition-colors w-32"
-        >
-          +1 "POP"
-        </button>
-
-        <button
-          onClick={resetTracker}
-          className="bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded font-bold transition-colors border-l-2 border-gray-500 ml-4 pl-6"
-        >
-          Reset All
-        </button>
-      </div>
-
-    </motion.div>
+    </div>
   );
 }
