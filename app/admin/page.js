@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { 
-  resetTotem, 
-  queueRemoteFollow, 
-  queueRemotePop, 
+import {
+  resetTotem,
+  queueRemoteFollow,
+  queueRemotePop,
   toggleAudio,
   enableAudio,
   disableAudio,
