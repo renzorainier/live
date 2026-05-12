@@ -301,7 +301,7 @@ export default function TotemTracker() {
             <AnimatePresence mode="wait">
               {isPopping ? (
                 <motion.div key="popping" initial={{ scale: 0.2, opacity: 0 }} animate={{ scale: 1.3, opacity: 1 }} exit={{ scale: 0.5, opacity: 0 }} className="flex flex-col items-center">
-                  <Image src={popGif} alt="Totem Popping!" width={160} height={160} unoptimized={true} className="object-contain drop-shadow-[0_0_50px_rgba(254,44,85,1)]" />
+                  <Image src={popGif} alt="Totem Popping!" width={160} height={160} unoptimized={true} style={{ height: 'auto' }} className="object-contain drop-shadow-[0_0_50px_rgba(254,44,85,1)]" />
                   <motion.h2 animate={{ scale: [1, 1.1, 1], rotate: [-2, 2, -2] }} transition={{ repeat: Infinity, duration: 0.2 }} className="text-[32px] font-black text-[#fe2c55] tracking-widest mt-4 uppercase drop-shadow-[0_0_20px_rgba(254,44,85,1)]">TOTEM POPPED!</motion.h2>
                 </motion.div>
               ) : isReady ? (
