@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
+import Link from 'next/link';
 import { io } from 'socket.io-client';
 
 // 1. IMPORT AUDIO HOOK
@@ -376,6 +377,12 @@ export default function TotemTracker() {
       {/* DEV CONTROLS + AUDIO TOGGLE */}
       <div className="fixed bottom-10 left-1/2 transform -translate-x-1/2 flex items-center gap-4 bg-gray-900/90 backdrop-blur-md p-4 rounded-2xl border border-gray-700 shadow-2xl z-50">
         <div className="absolute -top-3 left-4 bg-gray-800 text-xs text-gray-400 px-2 py-0.5 rounded font-mono font-bold border border-gray-600">Admin Controls</div>
+
+        <Link href="/admin" className="w-[130px] h-[46px] rounded-xl font-black text-[14px] uppercase flex items-center justify-center transition-all bg-purple-600 text-white shadow-[0_0_15px_rgba(147,51,234,0.4)] hover:scale-95">
+          📱 Control
+        </Link>
+
+        <div className="w-[1px] h-8 bg-gray-600 mx-2" />
 
         {/* 6. AUDIO UNMUTE TOGGLE */}
         <button
